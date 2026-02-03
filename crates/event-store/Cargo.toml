@@ -22,3 +22,5 @@ thiserror = { workspace = true }
 [dev-dependencies]
 testcontainers = { workspace = true }
 testcontainers-modules = { workspace = true }
+serial_test = { workspace = true }
+ctor = { workspace = true }
