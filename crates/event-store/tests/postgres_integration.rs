@@ -1,3 +1,14 @@
+//! PostgreSQL integration tests
+//!
+//! These tests use a shared PostgreSQL container for efficiency.
+//! Run with:
+//!
+//! ```bash
+//! cargo test -p event-store --test postgres_integration -- --test-threads=1
+//! ```
+
+use std::sync::Arc;
+
 use event_store::{
     AggregateId, AppendOptions, EventEnvelope, EventQuery, EventStore, EventStoreExt,
     PostgresEventStore, Snapshot, Version,
@@ -5,27 +16,69 @@ use event_store::{
 use sqlx::PgPool;
 use testcontainers::{ContainerAsync, runners::AsyncRunner};
 use testcontainers_modules::postgres::Postgres;
+use tokio::sync::OnceCell;
 
-async fn setup_postgres() -> (ContainerAsync<Postgres>, PostgresEventStore) {
-    let container = Postgres::default().start().await.unwrap();
+/// Shared container info - container stays alive for all tests
+struct ContainerInfo {
+    #[allow(dead_code)] // Container must stay alive for tests
+    container: ContainerAsync<Postgres>,
+    connection_string: String,
+}
 
-    let host = container.get_host().await.unwrap();
-    let port = container.get_host_port_ipv4(5432).await.unwrap();
+/// Global shared container
+static CONTAINER: OnceCell<Arc<ContainerInfo>> = OnceCell::const_new();
 
-    let connection_string = format!("postgres://postgres:postgres@{}:{}/postgres", host, port);
+async fn get_container_info() -> Arc<ContainerInfo> {
+    CONTAINER
+        .get_or_init(|| async {
+            let container = Postgres::default().start().await.unwrap();
 
-    let pool = PgPool::connect(&connection_string).await.unwrap();
+            let host = container.get_host().await.unwrap();
+            let port = container.get_host_port_ipv4(5432).await.unwrap();
 
-    // Run migrations using raw_sql to execute multiple statements
-    sqlx::raw_sql(include_str!(
-        "../../../migrations/001_create_events_table.sql"
-    ))
-    .execute(&pool)
-    .await
-    .unwrap();
+            let connection_string =
+                format!("postgres://postgres:postgres@{}:{}/postgres", host, port);
 
-    let store = PostgresEventStore::new(pool);
-    (container, store)
+            // Create a temporary pool just for migrations
+            let temp_pool = PgPool::connect(&connection_string).await.unwrap();
+
+            // Run migrations using raw_sql to execute multiple statements
+            sqlx::raw_sql(include_str!(
+                "../../../migrations/001_create_events_table.sql"
+            ))
+            .execute(&temp_pool)
+            .await
+            .unwrap();
+
+            temp_pool.close().await;
+
+            Arc::new(ContainerInfo {
+                container,
+                connection_string,
+            })
+        })
+        .await
+        .clone()
+}
+
+/// Get a fresh store with its own pool and cleared tables
+async fn get_test_store() -> PostgresEventStore {
+    let info = get_container_info().await;
+
+    // Create a fresh pool for each test to avoid connection issues
+    let pool = sqlx::postgres::PgPoolOptions::new()
+        .max_connections(5)
+        .connect(&info.connection_string)
+        .await
+        .unwrap();
+
+    // Clear tables for test isolation
+    sqlx::query("TRUNCATE TABLE events, snapshots")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    PostgresEventStore::new(pool)
 }
 
 fn create_test_event(
@@ -44,7 +97,7 @@ fn create_test_event(
 
 #[tokio::test]
 async fn append_and_retrieve_events() {
-    let (_container, store) = setup_postgres().await;
+    let store = get_test_store().await;
     let aggregate_id = AggregateId::new();
 
     let event = create_test_event(aggregate_id, Version::first(), "TestEvent");
@@ -60,7 +113,7 @@ async fn append_and_retrieve_events() {
 
 #[tokio::test]
 async fn append_multiple_events_atomically() {
-    let (_container, store) = setup_postgres().await;
+    let store = get_test_store().await;
     let aggregate_id = AggregateId::new();
 
     let events = vec![
@@ -82,7 +135,7 @@ async fn append_multiple_events_atomically() {
 
 #[tokio::test]
 async fn optimistic_concurrency_conflict() {
-    let (_container, store) = setup_postgres().await;
+    let store = get_test_store().await;
     let aggregate_id = AggregateId::new();
 
     // First event
@@ -111,7 +164,7 @@ async fn optimistic_concurrency_conflict() {
 
 #[tokio::test]
 async fn optimistic_concurrency_success() {
-    let (_container, store) = setup_postgres().await;
+    let store = get_test_store().await;
     let aggregate_id = AggregateId::new();
 
     // First event
@@ -138,7 +191,7 @@ async fn optimistic_concurrency_success() {
 
 #[tokio::test]
 async fn get_events_from_version() {
-    let (_container, store) = setup_postgres().await;
+    let store = get_test_store().await;
     let aggregate_id = AggregateId::new();
 
     let events = vec![
@@ -160,7 +213,7 @@ async fn get_events_from_version() {
 
 #[tokio::test]
 async fn get_events_by_type() {
-    let (_container, store) = setup_postgres().await;
+    let store = get_test_store().await;
     let id1 = AggregateId::new();
     let id2 = AggregateId::new();
 
@@ -195,7 +248,7 @@ async fn get_events_by_type() {
 
 #[tokio::test]
 async fn query_events_with_filters() {
-    let (_container, store) = setup_postgres().await;
+    let store = get_test_store().await;
     let aggregate_id = AggregateId::new();
 
     let events = vec![
@@ -218,7 +271,7 @@ async fn query_events_with_filters() {
 
 #[tokio::test]
 async fn query_events_with_limit_and_offset() {
-    let (_container, store) = setup_postgres().await;
+    let store = get_test_store().await;
     let aggregate_id = AggregateId::new();
 
     let events = vec![
@@ -243,7 +296,7 @@ async fn query_events_with_limit_and_offset() {
 
 #[tokio::test]
 async fn snapshot_save_and_retrieve() {
-    let (_container, store) = setup_postgres().await;
+    let store = get_test_store().await;
     let aggregate_id = AggregateId::new();
 
     let snapshot = Snapshot::new(
@@ -266,7 +319,7 @@ async fn snapshot_save_and_retrieve() {
 
 #[tokio::test]
 async fn snapshot_update_replaces_existing() {
-    let (_container, store) = setup_postgres().await;
+    let store = get_test_store().await;
     let aggregate_id = AggregateId::new();
 
     let snapshot1 = Snapshot::new(
@@ -292,7 +345,7 @@ async fn snapshot_update_replaces_existing() {
 
 #[tokio::test]
 async fn snapshot_not_found() {
-    let (_container, store) = setup_postgres().await;
+    let store = get_test_store().await;
     let aggregate_id = AggregateId::new();
 
     let result = store.get_snapshot(aggregate_id).await.unwrap();
@@ -303,7 +356,7 @@ async fn snapshot_not_found() {
 async fn stream_all_events() {
     use futures_util::StreamExt;
 
-    let (_container, store) = setup_postgres().await;
+    let store = get_test_store().await;
     let id1 = AggregateId::new();
     let id2 = AggregateId::new();
 
@@ -330,7 +383,7 @@ async fn stream_all_events() {
 
 #[tokio::test]
 async fn aggregate_exists_extension() {
-    let (_container, store) = setup_postgres().await;
+    let store = get_test_store().await;
     let aggregate_id = AggregateId::new();
 
     // Doesn't exist yet
@@ -349,7 +402,7 @@ async fn aggregate_exists_extension() {
 
 #[tokio::test]
 async fn load_aggregate_without_snapshot() {
-    let (_container, store) = setup_postgres().await;
+    let store = get_test_store().await;
     let aggregate_id = AggregateId::new();
 
     let events = vec![
@@ -365,7 +418,7 @@ async fn load_aggregate_without_snapshot() {
 
 #[tokio::test]
 async fn load_aggregate_with_snapshot() {
-    let (_container, store) = setup_postgres().await;
+    let store = get_test_store().await;
     let aggregate_id = AggregateId::new();
 
     // Add initial events
@@ -406,7 +459,7 @@ async fn load_aggregate_with_snapshot() {
 
 #[tokio::test]
 async fn unique_constraint_prevents_duplicate_versions() {
-    let (_container, store) = setup_postgres().await;
+    let store = get_test_store().await;
     let aggregate_id = AggregateId::new();
 
     // First event at version 1
@@ -425,7 +478,7 @@ async fn unique_constraint_prevents_duplicate_versions() {
 
 #[tokio::test]
 async fn event_metadata_preserved() {
-    let (_container, store) = setup_postgres().await;
+    let store = get_test_store().await;
     let aggregate_id = AggregateId::new();
 
     let event = EventEnvelope::builder()
