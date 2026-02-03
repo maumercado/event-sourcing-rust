@@ -1,6 +1,9 @@
 -- Event store schema
 -- Stores all domain events in an append-only fashion
 
+-- Enable pgcrypto for gen_random_uuid() if not available (PG < 13)
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
 CREATE TABLE events (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     event_type VARCHAR(255) NOT NULL,
