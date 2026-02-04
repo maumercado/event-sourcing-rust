@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/maumercado/event-sourcing-rust/actions/workflows/ci.yml/badge.svg)](https://github.com/maumercado/event-sourcing-rust/actions/workflows/ci.yml)
 
-An event-sourced order management system demonstrating Event Sourcing, CQRS, and the Saga pattern in Rust. This is a portfolio project targeting backend engineering roles.
+An event-sourced order management system demonstrating Event Sourcing, CQRS, and the Saga pattern in Rust.
 
 ## Features
 
