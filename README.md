@@ -1,5 +1,7 @@
 # Event Sourcing in Rust
 
+[![CI](https://github.com/maumercado/event-sourcing-rust/actions/workflows/ci.yml/badge.svg)](https://github.com/maumercado/event-sourcing-rust/actions/workflows/ci.yml)
+
 An event-sourced order management system demonstrating Event Sourcing, CQRS, and the Saga pattern in Rust. This is a portfolio project targeting backend engineering roles.
 
 ## Features
@@ -23,7 +25,7 @@ An event-sourced order management system demonstrating Event Sourcing, CQRS, and
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/yourusername/event-sourcing-rust.git
+git clone https://github.com/maumercado/event-sourcing-rust.git
 cd event-sourcing-rust
 ```
 
@@ -44,17 +46,25 @@ cargo test
 # Unit tests only (fast)
 cargo test --lib
 
-# Integration tests (requires Docker)
-cargo test --test postgres_integration
+# Domain integration tests
+cargo test -p domain --test order_integration
 
-# All tests
+# Postgres integration tests (requires Docker via testcontainers)
+cargo test -p event-store --test postgres_integration
+
+# All tests (119 total)
 cargo test
 ```
+
+> **Note**: Integration tests use [testcontainers](https://github.com/testcontainers/testcontainers-rs) to automatically spin up PostgreSQL in Docker. No manual setup required.
 
 ## Project Structure
 
 ```
 event-sourcing-rust/
+├── .github/
+│   └── workflows/
+│       └── ci.yml        # GitHub Actions CI pipeline
 ├── crates/
 │   ├── common/           # Shared types (AggregateId)
 │   ├── event-store/      # Event store implementation
