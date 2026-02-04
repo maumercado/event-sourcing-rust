@@ -264,8 +264,6 @@ mod tests {
 
     #[derive(Debug, thiserror::Error)]
     enum TestError {
-        #[error("not initialized")]
-        NotInitialized,
         #[error("invalid value: {0}")]
         InvalidValue(i32),
     }
