@@ -17,8 +17,8 @@ An event-sourced order management system demonstrating Event Sourcing, CQRS, and
 
 ### Prerequisites
 
-- Rust 1.75+ (2024 edition)
-- Docker and Docker Compose
+- Rust 1.85+ (2024 edition)
+- Docker (for integration tests via testcontainers)
 - PostgreSQL client (optional, for manual queries)
 
 ### Setup
@@ -29,16 +29,13 @@ git clone https://github.com/maumercado/event-sourcing-rust.git
 cd event-sourcing-rust
 ```
 
-2. Start PostgreSQL:
-```bash
-docker-compose up -d
-```
-
-3. Build and test:
+2. Build and test:
 ```bash
 cargo build
 cargo test
 ```
+
+> **Note**: Integration tests automatically start PostgreSQL via testcontainers. Docker must be running.
 
 ### Running Tests
 
