@@ -16,7 +16,7 @@ use event_store::{
 use serial_test::serial;
 use sqlx::PgPool;
 use std::sync::{Arc, OnceLock};
-use testcontainers::{core::IntoContainerPort, runners::AsyncRunner, ContainerAsync, ImageExt};
+use testcontainers::{ContainerAsync, ImageExt, core::IntoContainerPort, runners::AsyncRunner};
 use testcontainers_modules::postgres::Postgres;
 use tokio::sync::OnceCell;
 

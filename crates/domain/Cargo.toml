@@ -1,0 +1,21 @@
+[package]
+name = "domain"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Domain layer with aggregates, commands, and events for event-sourcing system"
+
+[dependencies]
+event-store = { path = "../event-store" }
+common = { path = "../common" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+async-trait = { workspace = true }
+chrono = { workspace = true }
+uuid = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }

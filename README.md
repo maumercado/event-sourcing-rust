@@ -5,6 +5,7 @@ An event-sourced order management system demonstrating Event Sourcing, CQRS, and
 ## Features
 
 - **Event Store**: Append-only event storage with PostgreSQL backend
+- **Domain Layer**: Order aggregate with state machine and command handling
 - **CQRS**: Command and Query Responsibility Segregation
 - **Saga Pattern**: Multi-step distributed transactions with compensation
 - **Optimistic Concurrency**: Version-based conflict detection
@@ -56,17 +57,31 @@ cargo test
 event-sourcing-rust/
 ├── crates/
 │   ├── common/           # Shared types (AggregateId)
-│   └── event-store/      # Event store implementation
+│   ├── event-store/      # Event store implementation
+│   │   ├── src/
+│   │   │   ├── event.rs      # EventEnvelope, EventId, Version
+│   │   │   ├── store.rs      # EventStore trait
+│   │   │   ├── postgres.rs   # PostgreSQL implementation
+│   │   │   ├── memory.rs     # In-memory implementation (testing)
+│   │   │   ├── snapshot.rs   # Snapshot support
+│   │   │   ├── query.rs      # EventQuery builder
+│   │   │   └── error.rs      # Error types
+│   │   └── tests/
+│   │       └── postgres_integration.rs
+│   └── domain/           # Domain layer (Phase 2)
 │       ├── src/
-│       │   ├── event.rs      # EventEnvelope, EventId, Version
-│       │   ├── store.rs      # EventStore trait
-│       │   ├── postgres.rs   # PostgreSQL implementation
-│       │   ├── memory.rs     # In-memory implementation (testing)
-│       │   ├── snapshot.rs   # Snapshot support
-│       │   ├── query.rs      # EventQuery builder
-│       │   └── error.rs      # Error types
+│       │   ├── aggregate.rs  # Aggregate, DomainEvent traits
+│       │   ├── command.rs    # Command, CommandHandler
+│       │   ├── error.rs      # DomainError
+│       │   └── order/        # Order aggregate
+│       │       ├── aggregate.rs    # Order struct
+│       │       ├── state.rs        # OrderState enum
+│       │       ├── events.rs       # OrderEvent variants
+│       │       ├── commands.rs     # Command structs
+│       │       ├── service.rs      # OrderService
+│       │       └── value_objects.rs
 │       └── tests/
-│           └── postgres_integration.rs
+│           └── order_integration.rs
 ├── migrations/           # SQL migrations
 └── docker-compose.yml    # Local PostgreSQL
 ```
@@ -82,6 +97,40 @@ The event store provides:
 - **Flexible queries**: Query by aggregate ID, event type, version range, or timestamp
 - **Event streaming**: Stream all events for projections
 - **Snapshots**: Cache aggregate state to avoid replaying all events
+
+### Domain Layer (Phase 2)
+
+The domain layer provides:
+
+- **Aggregate trait**: Base trait for event-sourced aggregates
+- **CommandHandler**: Generic handler implementing load → execute → persist pattern
+- **Order Aggregate**: Complete order management with state machine
+
+#### Order State Machine
+
+```
+Draft ──────┬──► Reserved ──► Processing ──► Completed
+            │        │            │
+            └────────┴────────────┴──► Cancelled
+```
+
+- **Draft**: Items can be added/removed
+- **Reserved**: Inventory reserved, awaiting payment
+- **Processing**: Payment confirmed, being fulfilled
+- **Completed**: Shipped (terminal state)
+- **Cancelled**: Cancelled at any point (terminal state)
+
+#### Order Events
+
+- `OrderCreated` - Order initialized for a customer
+- `ItemAdded` - Product added to order
+- `ItemRemoved` - Product removed from order
+- `ItemQuantityUpdated` - Quantity changed
+- `OrderSubmitted` - Order submitted for processing
+- `OrderReserved` - Inventory reserved
+- `OrderProcessing` - Payment confirmed
+- `OrderCompleted` - Order shipped
+- `OrderCancelled` - Order cancelled with reason
 
 ### Core Types
 
@@ -106,42 +155,49 @@ pub trait EventStore: Send + Sync {
     async fn get_events_by_type(&self, event_type: &str) -> Result<Vec<EventEnvelope>>;
     // ... more methods
 }
+
+// Aggregate trait for event-sourced entities
+pub trait Aggregate: Default + Send + Sync + Sized {
+    type Event: DomainEvent;
+    type Error: std::error::Error + Send + Sync;
+
+    fn aggregate_type() -> &'static str;
+    fn id(&self) -> Option<AggregateId>;
+    fn version(&self) -> Version;
+    fn apply(&mut self, event: Self::Event);  // Pure, deterministic
+}
 ```
 
 ### Usage Example
 
 ```rust
-use event_store::{
-    AggregateId, AppendOptions, EventEnvelope, EventStore,
-    PostgresEventStore, Version,
+use domain::{
+    CreateOrder, AddItem, OrderService, OrderItem, CustomerId, Money,
 };
-use sqlx::PgPool;
+use event_store::InMemoryEventStore;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let pool = PgPool::connect("postgres://localhost/eventstore").await?;
-    let store = PostgresEventStore::new(pool);
+    // Create an order service with in-memory store
+    let store = InMemoryEventStore::new();
+    let service = OrderService::new(store);
 
-    let aggregate_id = AggregateId::new();
+    // Create an order
+    let customer_id = CustomerId::new();
+    let cmd = CreateOrder::for_customer(customer_id);
+    let order_id = cmd.order_id;
 
-    // Create an event
-    let event = EventEnvelope::builder()
-        .aggregate_id(aggregate_id)
-        .aggregate_type("Order")
-        .event_type("OrderCreated")
-        .version(Version::first())
-        .payload_raw(serde_json::json!({
-            "customer_id": "cust-123",
-            "items": [{"sku": "ITEM-1", "quantity": 2}]
-        }))
-        .build();
+    service.create_order(cmd).await?;
 
-    // Append with optimistic concurrency check
-    store.append(vec![event], AppendOptions::expect_new()).await?;
+    // Add items
+    service.add_item(AddItem::new(
+        order_id,
+        OrderItem::new("SKU-001", "Widget", 2, Money::from_cents(1000)),
+    )).await?;
 
-    // Query events
-    let events = store.get_events_for_aggregate(aggregate_id).await?;
-    println!("Found {} events", events.len());
+    // Get order
+    let order = service.get_order(order_id).await?.unwrap();
+    println!("Order total: {}", order.total_amount());  // $20.00
 
     Ok(())
 }
@@ -173,7 +229,7 @@ cargo check
 | Phase | Tag | Focus | Status |
 |-------|-----|-------|--------|
 | 1 | v0.1.0-phase1 | Event Store Foundation | Complete |
-| 2 | v0.2.0-phase2 | Command Handlers & Aggregates | Planned |
+| 2 | v0.2.0-phase2 | Command Handlers & Aggregates | Complete |
 | 3 | v0.3.0-phase3 | Read Models & Projections | Planned |
 | 4 | v0.4.0-phase4 | Saga Pattern | Planned |
 | 5 | v0.5.0-phase5 | Observability & Operations | Planned |

@@ -56,7 +56,9 @@ impl From<EventId> for Uuid {
 ///
 /// Versions start at 1 for the first event and increment by 1 for each
 /// subsequent event on an aggregate.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize,
+)]
 #[serde(transparent)]
 pub struct Version(i64);
 
