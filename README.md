@@ -250,6 +250,19 @@ cargo check
 - Read model lag: <100ms
 - Event replay: 10,000 events/sec
 
+## Documentation
+
+Detailed documentation on the architectural patterns used in this project:
+
+| Document | Description |
+|----------|-------------|
+| [Event Sourcing](./docs/event-sourcing.md) | Store state as a sequence of immutable events |
+| [CQRS](./docs/cqrs.md) | Separate read and write models for scalability |
+| [Saga Pattern](./docs/saga-pattern.md) | Manage distributed transactions with compensation |
+| [Architecture](./docs/architecture.md) | How all patterns work together |
+
+See the [docs folder](./docs/) for the complete documentation.
+
 ## License
 
 MIT License - see [LICENSE](LICENSE) for details.
