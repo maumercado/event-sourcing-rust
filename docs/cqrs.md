@@ -206,8 +206,9 @@ When combined with Event Sourcing, CQRS becomes powerful:
 | Commands | ✅ Implemented | `crates/domain/src/order/commands.rs` |
 | Command Handler | ✅ Implemented | `crates/domain/src/command.rs` |
 | Aggregates | ✅ Implemented | `crates/domain/src/order/aggregate.rs` |
-| Read Models | 🔜 Phase 3 | Coming soon |
-| Projections | 🔜 Phase 3 | Coming soon |
+| Read Models | ✅ Implemented | `crates/projections/src/views/` |
+| Projections | ✅ Implemented | `crates/projections/src/projection.rs` |
+| Projection Processor | ✅ Implemented | `crates/projections/src/processor.rs` |
 
 ### Command Flow Example
 
@@ -223,12 +224,12 @@ println!("Order created: {:?}", result.aggregate.id());
 println!("Events: {:?}", result.events);
 ```
 
-### Planned Read Models (Phase 3)
+### Read Models (Phase 3 - Complete)
 
-- **CurrentOrdersView**: Active orders with status
-- **OrderHistoryView**: Complete order history
-- **CustomerOrdersView**: Orders by customer
-- **InventoryView**: Product availability
+- **CurrentOrdersView**: Active (non-terminal) orders with items and totals (`crates/projections/src/views/current_orders.rs`)
+- **OrderHistoryView**: Completed/cancelled orders with tracking and cancellation details (`crates/projections/src/views/order_history.rs`)
+- **CustomerOrdersView**: Per-customer statistics — order counts, spending, active/completed/cancelled (`crates/projections/src/views/customer_orders.rs`)
+- **InventoryView**: Product demand — quantities ordered, reserved, completed, and revenue (`crates/projections/src/views/inventory.rs`)
 
 ## Further Reading
 

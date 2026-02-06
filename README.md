@@ -8,7 +8,8 @@ An event-sourced order management system demonstrating Event Sourcing, CQRS, and
 
 - **Event Store**: Append-only event storage with PostgreSQL backend
 - **Domain Layer**: Order aggregate with state machine and command handling
-- **CQRS**: Command and Query Responsibility Segregation
+- **CQRS**: Command and Query Responsibility Segregation with read model projections
+- **Projections**: Four read model views (Current Orders, Order History, Customer Stats, Inventory Demand)
 - **Saga Pattern**: Multi-step distributed transactions with compensation
 - **Optimistic Concurrency**: Version-based conflict detection
 - **Snapshots**: Aggregate state caching for performance
@@ -49,7 +50,10 @@ cargo test -p domain --test order_integration
 # Postgres integration tests (requires Docker via testcontainers)
 cargo test -p event-store --test postgres_integration
 
-# All tests (119 total)
+# Projection tests
+cargo test -p projections
+
+# All tests (169 total)
 cargo test
 ```
 
@@ -75,20 +79,33 @@ event-sourcing-rust/
 │   │   │   └── error.rs      # Error types
 │   │   └── tests/
 │   │       └── postgres_integration.rs
-│   └── domain/           # Domain layer (Phase 2)
+│   ├── domain/           # Domain layer (Phase 2)
+│   │   ├── src/
+│   │   │   ├── aggregate.rs  # Aggregate, DomainEvent traits
+│   │   │   ├── command.rs    # Command, CommandHandler
+│   │   │   ├── error.rs      # DomainError
+│   │   │   └── order/        # Order aggregate
+│   │   │       ├── aggregate.rs    # Order struct
+│   │   │       ├── state.rs        # OrderState enum
+│   │   │       ├── events.rs       # OrderEvent variants
+│   │   │       ├── commands.rs     # Command structs
+│   │   │       ├── service.rs      # OrderService
+│   │   │       └── value_objects.rs
+│   │   └── tests/
+│   │       └── order_integration.rs
+│   └── projections/      # CQRS read side (Phase 3)
 │       ├── src/
-│       │   ├── aggregate.rs  # Aggregate, DomainEvent traits
-│       │   ├── command.rs    # Command, CommandHandler
-│       │   ├── error.rs      # DomainError
-│       │   └── order/        # Order aggregate
-│       │       ├── aggregate.rs    # Order struct
-│       │       ├── state.rs        # OrderState enum
-│       │       ├── events.rs       # OrderEvent variants
-│       │       ├── commands.rs     # Command structs
-│       │       ├── service.rs      # OrderService
-│       │       └── value_objects.rs
+│       │   ├── error.rs          # ProjectionError
+│       │   ├── projection.rs     # Projection trait
+│       │   ├── read_model.rs     # ReadModel trait
+│       │   ├── processor.rs      # ProjectionProcessor
+│       │   └── views/
+│       │       ├── current_orders.rs   # Active orders
+│       │       ├── order_history.rs    # Completed/cancelled
+│       │       ├── customer_orders.rs  # Per-customer stats
+│       │       └── inventory.rs        # Product demand
 │       └── tests/
-│           └── order_integration.rs
+│           └── integration.rs
 ├── migrations/           # SQL migrations
 └── docker-compose.yml    # Local PostgreSQL
 ```
@@ -138,6 +155,17 @@ Draft ──────┬──► Reserved ──► Processing ──► Com
 - `OrderProcessing` - Payment confirmed
 - `OrderCompleted` - Order shipped
 - `OrderCancelled` - Order cancelled with reason
+
+### Projections (Phase 3)
+
+The CQRS query side provides denormalized read models updated from events:
+
+- **CurrentOrdersView**: Active (non-terminal) orders with items and totals. Orders removed on completion/cancellation.
+- **OrderHistoryView**: Completed and cancelled orders with final metadata (tracking number, cancellation reason).
+- **CustomerOrdersView**: Per-customer statistics — order counts, spending, active/completed/cancelled breakdowns.
+- **InventoryView**: Product demand across orders — quantities ordered, reserved, completed, and revenue.
+
+The `ProjectionProcessor` feeds events from the event store to all registered projections, supporting catch-up replay, single-event delivery, and full rebuilds.
 
 ### Core Types
 
@@ -230,17 +258,6 @@ cargo check
 - **Commits**: Follow [Conventional Commits](https://www.conventionalcommits.org/)
 - **Coverage**: Target >80%
 - **No warnings**: `cargo clippy -- -D warnings` must pass
-
-## Implementation Phases
-
-| Phase | Tag | Focus | Status |
-|-------|-----|-------|--------|
-| 1 | v0.1.0-phase1 | Event Store Foundation | Complete |
-| 2 | v0.2.0-phase2 | Command Handlers & Aggregates | Complete |
-| 3 | v0.3.0-phase3 | Read Models & Projections | Planned |
-| 4 | v0.4.0-phase4 | Saga Pattern | Planned |
-| 5 | v0.5.0-phase5 | Observability & Operations | Planned |
-| 6 | v1.0.0 | Production Ready | Planned |
 
 ## Performance Targets
 

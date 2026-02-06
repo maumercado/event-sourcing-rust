@@ -108,7 +108,15 @@ crates/
 ├── projections/              # Read models (Phase 3)
 │   └── src/
 │       ├── lib.rs
-│       └── orders/           # Order projections
+│       ├── error.rs          # ProjectionError
+│       ├── projection.rs     # Projection trait
+│       ├── read_model.rs     # ReadModel trait
+│       ├── processor.rs      # ProjectionProcessor
+│       └── views/
+│           ├── current_orders.rs   # Active orders
+│           ├── order_history.rs    # Completed/cancelled
+│           ├── customer_orders.rs  # Per-customer stats
+│           └── inventory.rs        # Product demand
 │
 └── saga/                     # Saga coordination (Phase 4)
     └── src/
@@ -305,11 +313,12 @@ pub enum DomainError {
 - [x] Order aggregate with state machine
 - [x] Value objects (Money, CustomerId, etc.)
 
-### Phase 3: Read Models (Planned)
-- [ ] Projection infrastructure
-- [ ] CurrentOrdersView
-- [ ] OrderHistoryView
-- [ ] CustomerOrdersView
+### Phase 3: Read Models (Complete)
+- [x] Projection trait and ProjectionProcessor
+- [x] CurrentOrdersView (active orders)
+- [x] OrderHistoryView (completed/cancelled with staging pattern)
+- [x] CustomerOrdersView (per-customer stats and spending)
+- [x] InventoryView (product demand tracking)
 
 ### Phase 4: Saga Pattern (Planned)
 - [ ] Saga definition and orchestrator
