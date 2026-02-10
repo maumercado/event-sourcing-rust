@@ -353,9 +353,9 @@ pub enum DomainError {
 - [x] Order CRUD + saga trigger endpoints
 - [x] API integration tests
 
-### Phase 6: Production Ready (Planned)
-- [ ] Configuration management
-- [ ] Graceful shutdown
+### Phase 6: Production Ready (In Progress)
+- [x] Configuration management
+- [x] Graceful shutdown
 - [ ] Performance optimization
 - [ ] Documentation completion
 
@@ -373,6 +373,8 @@ pub enum DomainError {
 | HTTP Framework | Axum | Tower-compatible, async, ergonomic extractors |
 | Logging | tracing + #[instrument] | Span-based, structured, non-invasive |
 | Metrics | metrics + Prometheus exporter | Lightweight, Prometheus-native |
+| Configuration | Env vars + Config struct | 12-factor app, discoverable defaults |
+| Graceful Shutdown | tokio::signal + with_graceful_shutdown | Drains in-flight requests on SIGINT/SIGTERM |
 
 ## Further Reading
 
