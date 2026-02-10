@@ -3,6 +3,7 @@
 //! Provides REST endpoints for order management and saga execution,
 //! with structured logging (tracing) and Prometheus metrics.
 
+pub mod config;
 pub mod error;
 pub mod routes;
 
