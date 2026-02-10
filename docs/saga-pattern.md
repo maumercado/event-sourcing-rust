@@ -316,31 +316,31 @@ pub enum SagaEvent {
 
 | Component | Status | Location |
 |-----------|--------|----------|
-| Saga Definition | 🔜 Phase 4 | Planned |
-| Saga Orchestrator | 🔜 Phase 4 | Planned |
-| Order Fulfillment Saga | 🔜 Phase 4 | Planned |
-| Saga Events | 🔜 Phase 4 | Planned |
+| SagaState | ✅ Complete | `crates/saga/src/state.rs` |
+| SagaEvent | ✅ Complete | `crates/saga/src/events.rs` |
+| SagaInstance (Aggregate) | ✅ Complete | `crates/saga/src/aggregate.rs` |
+| SagaCoordinator | ✅ Complete | `crates/saga/src/coordinator.rs` |
+| External Service Traits | ✅ Complete | `crates/saga/src/services/` |
+| Order Fulfillment Constants | ✅ Complete | `crates/saga/src/order_fulfillment.rs` |
 
-### Planned Architecture
+### Architecture
 
 ```rust
-// Saga definition
-let order_saga = SagaDefinition::new("OrderFulfillment")
-    .step("reserve_inventory")
-        .action(reserve_inventory)
-        .compensation(release_inventory)
-    .step("process_payment")
-        .action(process_payment)
-        .compensation(refund_payment)
-    .step("create_shipment")
-        .action(create_shipment)
-    .build();
+// Setup
+let store = InMemoryEventStore::new();
+let coordinator = SagaCoordinator::new(
+    store.clone(),
+    inventory_service,
+    payment_service,
+    shipping_service,
+);
 
-// Execution
-let saga_id = orchestrator.start(order_saga, context).await?;
+// Execute saga for an order
+let saga_id = coordinator.execute_saga(order_id).await?;
 
-// Check status
-let status = orchestrator.status(saga_id).await?;
+// Load saga state (event-sourced)
+let saga = coordinator.get_saga(saga_id).await?;
+assert_eq!(saga.state(), SagaState::Completed);
 ```
 
 ## Best Practices

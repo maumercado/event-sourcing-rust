@@ -39,6 +39,7 @@ impl InMemoryEventStore {
 
 #[async_trait]
 impl EventStore for InMemoryEventStore {
+    #[tracing::instrument(skip(self, events), fields(aggregate_id))]
     async fn append(&self, events: Vec<EventEnvelope>, options: AppendOptions) -> Result<Version> {
         validate_events_for_append(&events).map_err(|e| {
             EventStoreError::Serialization(serde_json::Error::io(std::io::Error::other(e.message)))
@@ -79,15 +80,20 @@ impl EventStore for InMemoryEventStore {
         }
 
         // Store all events
+        let event_count = events.len();
         let last_version = events
             .last()
             .map(|e| e.version)
             .unwrap_or(Version::initial());
         store.extend(events);
 
+        tracing::info!(event_count, %aggregate_id, "events appended");
+        metrics::counter!("events_appended").increment(event_count as u64);
+
         Ok(last_version)
     }
 
+    #[tracing::instrument(skip(self))]
     async fn get_events_for_aggregate(
         &self,
         aggregate_id: AggregateId,

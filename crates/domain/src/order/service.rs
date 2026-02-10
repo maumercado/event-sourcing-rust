@@ -39,6 +39,7 @@ impl<S: EventStore> OrderService<S> {
     }
 
     /// Creates a new order for a customer.
+    #[tracing::instrument(skip(self))]
     pub async fn create_order(
         &self,
         cmd: CreateOrder,
@@ -52,6 +53,7 @@ impl<S: EventStore> OrderService<S> {
     }
 
     /// Adds an item to an order.
+    #[tracing::instrument(skip(self))]
     pub async fn add_item(&self, cmd: AddItem) -> Result<CommandResult<Order>, DomainError> {
         let item = cmd.item.clone();
 
@@ -61,6 +63,7 @@ impl<S: EventStore> OrderService<S> {
     }
 
     /// Removes an item from an order.
+    #[tracing::instrument(skip(self))]
     pub async fn remove_item(&self, cmd: RemoveItem) -> Result<CommandResult<Order>, DomainError> {
         let product_id = cmd.product_id.clone();
 
@@ -70,6 +73,7 @@ impl<S: EventStore> OrderService<S> {
     }
 
     /// Updates the quantity of an item in an order.
+    #[tracing::instrument(skip(self))]
     pub async fn update_item_quantity(
         &self,
         cmd: UpdateItemQuantity,
@@ -85,6 +89,7 @@ impl<S: EventStore> OrderService<S> {
     }
 
     /// Submits an order for processing.
+    #[tracing::instrument(skip(self))]
     pub async fn submit_order(
         &self,
         cmd: SubmitOrder,
@@ -95,6 +100,7 @@ impl<S: EventStore> OrderService<S> {
     }
 
     /// Marks inventory as reserved for an order.
+    #[tracing::instrument(skip(self))]
     pub async fn mark_reserved(
         &self,
         cmd: MarkReserved,
@@ -107,6 +113,7 @@ impl<S: EventStore> OrderService<S> {
     }
 
     /// Starts processing an order.
+    #[tracing::instrument(skip(self))]
     pub async fn start_processing(
         &self,
         cmd: StartProcessing,
@@ -119,6 +126,7 @@ impl<S: EventStore> OrderService<S> {
     }
 
     /// Completes an order.
+    #[tracing::instrument(skip(self))]
     pub async fn complete_order(
         &self,
         cmd: CompleteOrder,
@@ -131,6 +139,7 @@ impl<S: EventStore> OrderService<S> {
     }
 
     /// Cancels an order.
+    #[tracing::instrument(skip(self))]
     pub async fn cancel_order(
         &self,
         cmd: CancelOrder,
@@ -146,6 +155,7 @@ impl<S: EventStore> OrderService<S> {
     /// Loads an order by ID.
     ///
     /// Returns None if the order doesn't exist.
+    #[tracing::instrument(skip(self))]
     pub async fn get_order(&self, order_id: AggregateId) -> Result<Option<Order>, DomainError> {
         self.handler.load_existing(order_id).await
     }

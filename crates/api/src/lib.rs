@@ -1,0 +1,78 @@
+//! HTTP API server with observability for the event-sourcing system.
+//!
+//! Provides REST endpoints for order management and saga execution,
+//! with structured logging (tracing) and Prometheus metrics.
+
+pub mod error;
+pub mod routes;
+
+use std::sync::Arc;
+
+use axum::Router;
+use axum::routing::{get, post};
+use event_store::InMemoryEventStore;
+use metrics_exporter_prometheus::PrometheusHandle;
+use projections::{CurrentOrdersView, ProjectionProcessor};
+use tower_http::trace::TraceLayer;
+
+use routes::orders::AppState;
+
+/// Creates the Axum application router with all routes and shared state.
+pub fn create_app(
+    state: Arc<AppState>,
+    metrics_handle: PrometheusHandle,
+    projection_processor: Arc<ProjectionProcessor<InMemoryEventStore>>,
+) -> Router {
+    let _ = projection_processor;
+
+    let metrics_router = Router::new()
+        .route("/metrics", get(routes::metrics::get))
+        .with_state(metrics_handle);
+
+    Router::new()
+        .route("/health", get(routes::health::check))
+        .route("/orders", post(routes::orders::create))
+        .route("/orders", get(routes::orders::list))
+        .route("/orders/{id}", get(routes::orders::get))
+        .route("/orders/{id}/submit", post(routes::orders::submit))
+        .route("/orders/{id}/fulfill", post(routes::orders::fulfill))
+        .route("/orders/{id}/saga", get(routes::orders::saga_status))
+        .with_state(state)
+        .merge(metrics_router)
+        .layer(TraceLayer::new_for_http())
+}
+
+/// Creates the default application state with in-memory stores and mock services.
+pub fn create_default_state(
+    event_store: InMemoryEventStore,
+) -> (
+    Arc<AppState>,
+    Arc<ProjectionProcessor<InMemoryEventStore>>,
+    Arc<CurrentOrdersView>,
+) {
+    use domain::OrderService;
+    use projections::Projection;
+    use saga::{
+        InMemoryInventoryService, InMemoryPaymentService, InMemoryShippingService, SagaCoordinator,
+    };
+
+    let order_service = OrderService::new(event_store.clone());
+    let inventory = InMemoryInventoryService::new();
+    let payment = InMemoryPaymentService::new();
+    let shipping = InMemoryShippingService::new();
+    let saga_coordinator = SagaCoordinator::new(event_store.clone(), inventory, payment, shipping);
+
+    let current_orders = Arc::new(CurrentOrdersView::new());
+
+    let mut processor = ProjectionProcessor::new(event_store);
+    processor.register(Box::new(current_orders.as_ref().clone()) as Box<dyn Projection>);
+    let processor = Arc::new(processor);
+
+    let state = Arc::new(AppState {
+        order_service,
+        saga_coordinator,
+        current_orders: current_orders.clone(),
+    });
+
+    (state, processor, current_orders)
+}

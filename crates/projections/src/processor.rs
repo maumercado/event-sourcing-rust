@@ -38,6 +38,7 @@ impl<S: EventStore> ProjectionProcessor<S> {
 
     /// Runs catch-up processing: streams all events from the store and delivers
     /// them to each projection that hasn't already seen them.
+    #[tracing::instrument(skip(self))]
     pub async fn run_catch_up(&self) -> Result<()> {
         let mut stream = self.store.stream_all_events().await?;
         let mut event_index: u64 = 0;
@@ -50,14 +51,18 @@ impl<S: EventStore> ProjectionProcessor<S> {
                 let pos = projection.position().await;
                 if pos.events_processed < event_index {
                     projection.handle(&event).await?;
+                    metrics::counter!("projections_events_processed").increment(1);
                 }
             }
         }
+
+        tracing::info!(events_processed = event_index, "catch-up complete");
 
         Ok(())
     }
 
     /// Delivers a single event to all registered projections.
+    #[tracing::instrument(skip(self, event), fields(event_type = %event.event_type))]
     pub async fn process_event(&self, event: &EventEnvelope) -> Result<()> {
         for projection in &self.projections {
             projection.handle(event).await?;
@@ -66,6 +71,7 @@ impl<S: EventStore> ProjectionProcessor<S> {
     }
 
     /// Resets all projections and replays all events from the store.
+    #[tracing::instrument(skip(self))]
     pub async fn rebuild_all(&self) -> Result<()> {
         for projection in &self.projections {
             projection.reset().await?;

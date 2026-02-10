@@ -112,6 +112,7 @@ where
     ///
     /// The command function receives the current aggregate state and returns
     /// either a list of events to apply, or an error.
+    #[tracing::instrument(skip(self, command_fn), fields(aggregate_type = A::aggregate_type()))]
     pub async fn execute<F>(
         &self,
         aggregate_id: AggregateId,
@@ -127,7 +128,14 @@ where
         let current_version = aggregate.version();
 
         // Execute command to get events
-        let events = command_fn(&aggregate)?;
+        let events = match command_fn(&aggregate) {
+            Ok(events) => events,
+            Err(e) => {
+                metrics::counter!("commands_failed", "aggregate_type" => A::aggregate_type())
+                    .increment(1);
+                return Err(DomainError::from(e));
+            }
+        };
 
         if events.is_empty() {
             return Ok(CommandResult {
@@ -154,6 +162,11 @@ where
             aggregate.apply(event.clone());
         }
         aggregate.set_version(new_version);
+
+        let events_count = events.len();
+        metrics::counter!("commands_executed", "aggregate_type" => A::aggregate_type())
+            .increment(1);
+        tracing::info!(events_count, "command executed");
 
         Ok(CommandResult {
             aggregate,

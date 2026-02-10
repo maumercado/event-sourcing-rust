@@ -1,23 +1,39 @@
 [package]
-name = "domain"
+name = "api"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
-description = "Domain layer with aggregates, commands, and events for event-sourcing system"
+description = "HTTP API server with observability for the event-sourcing system"
+
+[[bin]]
+name = "api"
+path = "src/main.rs"
 
 [dependencies]
 event-store = { path = "../event-store" }
+domain = { path = "../domain" }
+projections = { path = "../projections" }
+saga = { path = "../saga" }
 common = { path = "../common" }
+
 serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true }
-async-trait = { workspace = true }
 chrono = { workspace = true }
 uuid = { workspace = true }
 thiserror = { workspace = true }
+
+# Observability
 tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
 metrics = { workspace = true }
+metrics-exporter-prometheus = { workspace = true }
+
+# HTTP
+axum = { workspace = true }
+tower-http = { workspace = true }
+tower = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }

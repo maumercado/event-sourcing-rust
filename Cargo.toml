@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/common", "crates/event-store", "crates/domain", "crates/projections"]
+members = ["crates/common", "crates/event-store", "crates/domain", "crates/projections", "crates/saga", "crates/api"]
 
 [workspace.package]
 version = "0.1.0"
@@ -40,3 +40,16 @@ testcontainers = "0.26"
 testcontainers-modules = { version = "0.14", features = ["postgres"] }
 serial_test = "3"
 ctor = "0.6"
+
+# Observability
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+
+# Metrics
+metrics = "0.24"
+metrics-exporter-prometheus = "0.16"
+
+# HTTP
+axum = "0.8"
+tower-http = { version = "0.6", features = ["trace", "cors"] }
+tower = "0.5"

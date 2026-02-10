@@ -118,10 +118,29 @@ crates/
 │           ├── customer_orders.rs  # Per-customer stats
 │           └── inventory.rs        # Product demand
 │
-└── saga/                     # Saga coordination (Phase 4)
+├── saga/                     # Saga coordination (Phase 4)
+│   └── src/
+│       ├── lib.rs
+│       ├── error.rs          # SagaError
+│       ├── state.rs          # SagaState enum
+│       ├── events.rs         # SagaEvent enum
+│       ├── aggregate.rs      # SagaInstance (implements Aggregate)
+│       ├── coordinator.rs    # SagaCoordinator orchestrator
+│       ├── order_fulfillment.rs  # Step name constants
+│       └── services/
+│           ├── inventory.rs  # InventoryService trait + mock
+│           ├── payment.rs    # PaymentService trait + mock
+│           └── shipping.rs   # ShippingService trait + mock
+│
+└── api/                      # HTTP API server (Phase 5)
     └── src/
-        ├── lib.rs
-        └── order_fulfillment.rs
+        ├── lib.rs            # AppState, create_app(), router
+        ├── main.rs           # Binary entry point
+        ├── error.rs          # ApiError → HTTP response mapping
+        └── routes/
+            ├── health.rs     # GET /health
+            ├── metrics.rs    # GET /metrics (Prometheus)
+            └── orders.rs     # Order CRUD + saga trigger
 ```
 
 ## Command Side (Write Path)
@@ -320,17 +339,19 @@ pub enum DomainError {
 - [x] CustomerOrdersView (per-customer stats and spending)
 - [x] InventoryView (product demand tracking)
 
-### Phase 4: Saga Pattern (Planned)
-- [ ] Saga definition and orchestrator
-- [ ] OrderFulfillmentSaga
-- [ ] Compensation handling
-- [ ] Saga persistence
+### Phase 4: Saga Pattern (Complete)
+- [x] SagaCoordinator with orchestration pattern
+- [x] OrderFulfillmentSaga (inventory → payment → shipping)
+- [x] Compensating transactions in reverse order
+- [x] Event-sourced SagaInstance aggregate for recovery
 
-### Phase 5: Observability (Planned)
-- [ ] Structured logging
-- [ ] Metrics (Prometheus)
-- [ ] Tracing (OpenTelemetry)
-- [ ] Health checks
+### Phase 5: Observability & API Server (Complete)
+- [x] Structured logging with `tracing` and `#[instrument]`
+- [x] Prometheus metrics (events_appended, commands_executed/failed, saga metrics)
+- [x] Axum HTTP server with REST API
+- [x] Health check and metrics endpoints
+- [x] Order CRUD + saga trigger endpoints
+- [x] API integration tests
 
 ### Phase 6: Production Ready (Planned)
 - [ ] Configuration management
@@ -349,6 +370,9 @@ pub enum DomainError {
 | Read Models | Separate tables | Optimized queries, independent scaling |
 | Money | Cents (i64) | Avoid floating-point precision issues |
 | IDs | Newtype wrappers | Type safety, prevent ID confusion |
+| HTTP Framework | Axum | Tower-compatible, async, ergonomic extractors |
+| Logging | tracing + #[instrument] | Span-based, structured, non-invasive |
+| Metrics | metrics + Prometheus exporter | Lightweight, Prometheus-native |
 
 ## Further Reading
 
