@@ -22,3 +22,8 @@ metrics = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+criterion = { workspace = true }
+
+[[bench]]
+name = "projections_bench"
+harness = false

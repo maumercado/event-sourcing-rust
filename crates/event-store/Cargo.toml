@@ -26,3 +26,9 @@ testcontainers = { workspace = true }
 testcontainers-modules = { workspace = true }
 serial_test = { workspace = true }
 ctor = { workspace = true }
+criterion = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+
+[[bench]]
+name = "event_store_bench"
+harness = false

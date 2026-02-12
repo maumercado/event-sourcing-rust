@@ -6,13 +6,16 @@ An event-sourced order management system demonstrating Event Sourcing, CQRS, and
 
 ## Features
 
-- **Event Store**: Append-only event storage with PostgreSQL backend
+- **Event Store**: Append-only event storage with PostgreSQL and in-memory backends (runtime-swappable)
 - **Domain Layer**: Order aggregate with state machine and command handling
 - **CQRS**: Command and Query Responsibility Segregation with read model projections
 - **Projections**: Four read model views (Current Orders, Order History, Customer Stats, Inventory Demand)
 - **Saga Pattern**: Multi-step distributed transactions with compensation
+- **HTTP API**: Axum REST server with order management, saga triggers, health checks, and Prometheus metrics
+- **Observability**: Structured tracing with `#[instrument]`, Prometheus counters and histograms
+- **Production Ready**: Graceful shutdown, env-based configuration, connection pooling
 - **Optimistic Concurrency**: Version-based conflict detection
-- **Snapshots**: Aggregate state caching for performance
+- **Snapshots**: Aggregate state caching infrastructure (ready to wire)
 
 ## Quick Start
 
@@ -38,6 +41,16 @@ cargo test
 
 > **Note**: Integration tests automatically start PostgreSQL via testcontainers. Docker must be running.
 
+### Running the Server
+
+```bash
+# In-memory event store (development)
+RUST_LOG=info cargo run -p api
+
+# PostgreSQL event store (production)
+DATABASE_URL=postgres://user:pass@localhost/events cargo run -p api
+```
+
 ### Running Tests
 
 ```bash
@@ -53,8 +66,11 @@ cargo test -p event-store --test postgres_integration
 # Projection tests
 cargo test -p projections
 
-# All tests (169 total)
+# All tests (224 total)
 cargo test
+
+# Benchmarks
+cargo bench
 ```
 
 > **Note**: Integration tests use [testcontainers](https://github.com/testcontainers/testcontainers-rs) to automatically spin up PostgreSQL in Docker. No manual setup required.
@@ -63,51 +79,15 @@ cargo test
 
 ```
 event-sourcing-rust/
-├── .github/
-│   └── workflows/
-│       └── ci.yml        # GitHub Actions CI pipeline
 ├── crates/
 │   ├── common/           # Shared types (AggregateId)
-│   ├── event-store/      # Event store implementation
-│   │   ├── src/
-│   │   │   ├── event.rs      # EventEnvelope, EventId, Version
-│   │   │   ├── store.rs      # EventStore trait
-│   │   │   ├── postgres.rs   # PostgreSQL implementation
-│   │   │   ├── memory.rs     # In-memory implementation (testing)
-│   │   │   ├── snapshot.rs   # Snapshot support
-│   │   │   ├── query.rs      # EventQuery builder
-│   │   │   └── error.rs      # Error types
-│   │   └── tests/
-│   │       └── postgres_integration.rs
-│   ├── domain/           # Domain layer (Phase 2)
-│   │   ├── src/
-│   │   │   ├── aggregate.rs  # Aggregate, DomainEvent traits
-│   │   │   ├── command.rs    # Command, CommandHandler
-│   │   │   ├── error.rs      # DomainError
-│   │   │   └── order/        # Order aggregate
-│   │   │       ├── aggregate.rs    # Order struct
-│   │   │       ├── state.rs        # OrderState enum
-│   │   │       ├── events.rs       # OrderEvent variants
-│   │   │       ├── commands.rs     # Command structs
-│   │   │       ├── service.rs      # OrderService
-│   │   │       └── value_objects.rs
-│   │   └── tests/
-│   │       └── order_integration.rs
-│   └── projections/      # CQRS read side (Phase 3)
-│       ├── src/
-│       │   ├── error.rs          # ProjectionError
-│       │   ├── projection.rs     # Projection trait
-│       │   ├── read_model.rs     # ReadModel trait
-│       │   ├── processor.rs      # ProjectionProcessor
-│       │   └── views/
-│       │       ├── current_orders.rs   # Active orders
-│       │       ├── order_history.rs    # Completed/cancelled
-│       │       ├── customer_orders.rs  # Per-customer stats
-│       │       └── inventory.rs        # Product demand
-│       └── tests/
-│           └── integration.rs
+│   ├── event-store/      # Event store (PostgreSQL + in-memory)
+│   ├── domain/           # Aggregates, commands, events
+│   ├── projections/      # CQRS read models (4 views)
+│   ├── saga/             # Saga coordinator + external service traits
+│   └── api/              # Axum HTTP server, routes, config
 ├── migrations/           # SQL migrations
-└── docker-compose.yml    # Local PostgreSQL
+└── docs/                 # Architecture & pattern documentation
 ```
 
 ## Architecture
@@ -259,13 +239,39 @@ cargo check
 - **Coverage**: Target >80%
 - **No warnings**: `cargo clippy -- -D warnings` must pass
 
-## Performance Targets
+## Performance
 
-- Event write latency: <10ms (P95)
-- Commands: 1,000/sec
-- Queries: 10,000/sec on read models
-- Read model lag: <100ms
-- Event replay: 10,000 events/sec
+Benchmarks measured with [Criterion.rs](https://github.com/bheisler/criterion.rs) on the in-memory event store. Run `cargo bench` to reproduce.
+
+### Event Store
+
+| Operation | Latency | Throughput |
+|-----------|---------|------------|
+| Append single event | ~1.8 us | ~550,000/sec |
+| Append batch (10 events) | ~10.5 us | ~950,000 events/sec |
+| Append with version check | ~1.8 us | ~550,000/sec |
+| Retrieve 100 events | ~25.6 us | ~3.9M events/sec |
+| Stream 1,000 events | ~354 us | ~2.8M events/sec |
+
+### Domain (Commands)
+
+| Operation | Latency | Throughput |
+|-----------|---------|------------|
+| Create order | ~3.2 us | ~313,000/sec |
+| Full cycle (create + add item + submit) | ~8.0 us | ~125,000/sec |
+| Reconstruct from 50 events | ~42.9 us | ~1.2M events/sec |
+| Reconstruct from 100 events | ~87.2 us | ~1.1M events/sec |
+
+### Projections (Read Models)
+
+| Operation | Latency | Throughput |
+|-----------|---------|------------|
+| Process single event | ~3.4 us | ~296,000/sec |
+| Catch-up 300 events | ~305 us | ~984,000 events/sec |
+| Catch-up 3,000 events | ~3.1 ms | ~968,000 events/sec |
+| Query all orders (100) | ~8.6 us | ~116,000 queries/sec |
+| Query by customer | ~632 ns | ~1.6M queries/sec |
+| Rebuild 300 events | ~302 us | ~993,000 events/sec |
 
 ## Documentation
 

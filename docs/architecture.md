@@ -353,12 +353,12 @@ pub enum DomainError {
 - [x] Order CRUD + saga trigger endpoints
 - [x] API integration tests
 
-### Phase 6: Production Ready (In Progress)
+### Phase 6: Production Ready (Complete)
 - [x] Configuration management
 - [x] Graceful shutdown
 - [x] Postgres integration (runtime-swappable event store)
-- [ ] Performance optimization
-- [ ] Documentation completion
+- [x] Performance benchmarks (Criterion.rs)
+- [x] Documentation completion
 
 ## Runtime Event Store Selection
 
