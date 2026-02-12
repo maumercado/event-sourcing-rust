@@ -6,7 +6,7 @@ use axum::Json;
 use axum::extract::{Path, State};
 use common::AggregateId;
 use domain::{AddItem, CreateOrder, CustomerId, Money, OrderItem, OrderService, SubmitOrder};
-use event_store::InMemoryEventStore;
+use event_store::EventStore;
 use projections::CurrentOrdersView;
 use saga::{
     InMemoryInventoryService, InMemoryPaymentService, InMemoryShippingService, SagaCoordinator,
@@ -16,10 +16,10 @@ use serde::{Deserialize, Serialize};
 use crate::error::ApiError;
 
 /// Shared application state accessible from all handlers.
-pub struct AppState {
-    pub order_service: OrderService<InMemoryEventStore>,
+pub struct AppState<S: EventStore> {
+    pub order_service: OrderService<S>,
     pub saga_coordinator: SagaCoordinator<
-        InMemoryEventStore,
+        S,
         InMemoryInventoryService,
         InMemoryPaymentService,
         InMemoryShippingService,
@@ -90,8 +90,8 @@ pub struct FulfillResponse {
 
 /// POST /orders — create a new order with optional items.
 #[tracing::instrument(skip(state, req))]
-pub async fn create(
-    State(state): State<Arc<AppState>>,
+pub async fn create<S: EventStore + Clone + 'static>(
+    State(state): State<Arc<AppState<S>>>,
     Json(req): Json<CreateOrderRequest>,
 ) -> Result<(axum::http::StatusCode, Json<OrderCreatedResponse>), ApiError> {
     let customer_id = if let Some(ref id_str) = req.customer_id {
@@ -129,8 +129,8 @@ pub async fn create(
 
 /// GET /orders/:id — load an order aggregate by ID.
 #[tracing::instrument(skip(state))]
-pub async fn get(
-    State(state): State<Arc<AppState>>,
+pub async fn get<S: EventStore + Clone + 'static>(
+    State(state): State<Arc<AppState<S>>>,
     Path(id): Path<String>,
 ) -> Result<Json<OrderResponse>, ApiError> {
     let aggregate_id = parse_aggregate_id(&id)?;
@@ -164,8 +164,8 @@ pub async fn get(
 
 /// GET /orders — list current (active) orders from projection.
 #[tracing::instrument(skip(state))]
-pub async fn list(
-    State(state): State<Arc<AppState>>,
+pub async fn list<S: EventStore + Clone + 'static>(
+    State(state): State<Arc<AppState<S>>>,
 ) -> Result<Json<Vec<OrderResponse>>, ApiError> {
     let orders = state.current_orders.get_all_orders().await;
 
@@ -197,8 +197,8 @@ pub async fn list(
 
 /// POST /orders/:id/submit — submit an order for fulfillment.
 #[tracing::instrument(skip(state))]
-pub async fn submit(
-    State(state): State<Arc<AppState>>,
+pub async fn submit<S: EventStore + Clone + 'static>(
+    State(state): State<Arc<AppState<S>>>,
     Path(id): Path<String>,
 ) -> Result<Json<OrderResponse>, ApiError> {
     let aggregate_id = parse_aggregate_id(&id)?;
@@ -239,8 +239,8 @@ pub async fn submit(
 
 /// POST /orders/:id/fulfill — trigger saga execution for the order.
 #[tracing::instrument(skip(state))]
-pub async fn fulfill(
-    State(state): State<Arc<AppState>>,
+pub async fn fulfill<S: EventStore + Clone + 'static>(
+    State(state): State<Arc<AppState<S>>>,
     Path(id): Path<String>,
 ) -> Result<Json<FulfillResponse>, ApiError> {
     let aggregate_id = parse_aggregate_id(&id)?;
@@ -261,8 +261,8 @@ pub async fn fulfill(
 
 /// GET /orders/:id/saga — get saga state for an order.
 #[tracing::instrument(skip(state))]
-pub async fn saga_status(
-    State(state): State<Arc<AppState>>,
+pub async fn saga_status<S: EventStore + Clone + 'static>(
+    State(state): State<Arc<AppState<S>>>,
     Path(id): Path<String>,
 ) -> Result<Json<SagaStatusResponse>, ApiError> {
     let saga_id = parse_aggregate_id(&id)?;

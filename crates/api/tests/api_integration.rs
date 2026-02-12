@@ -32,7 +32,7 @@ fn setup() -> axum::Router {
 
 fn setup_with_state() -> (
     axum::Router,
-    Arc<api::routes::orders::AppState>,
+    Arc<api::routes::orders::AppState<InMemoryEventStore>>,
     Arc<projections::ProjectionProcessor<InMemoryEventStore>>,
 ) {
     let store = InMemoryEventStore::new();

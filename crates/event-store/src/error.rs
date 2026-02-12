@@ -24,6 +24,10 @@ pub enum EventStoreError {
     #[error("Database error: {0}")]
     Database(#[from] sqlx::Error),
 
+    /// A database migration error occurred.
+    #[error("Migration error: {0}")]
+    Migration(#[from] sqlx::migrate::MigrateError),
+
     /// A serialization/deserialization error occurred.
     #[error("Serialization error: {0}")]
     Serialization(#[from] serde_json::Error),

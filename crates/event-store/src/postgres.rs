@@ -2,7 +2,10 @@ use std::collections::HashMap;
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use sqlx::{PgPool, Row, postgres::PgRow};
+use sqlx::{
+    PgPool, Row,
+    postgres::{PgPoolOptions, PgRow},
+};
 use uuid::Uuid;
 
 use crate::{
@@ -20,6 +23,17 @@ impl PostgresEventStore {
     /// Creates a new PostgreSQL event store.
     pub fn new(pool: PgPool) -> Self {
         Self { pool }
+    }
+
+    /// Connects to PostgreSQL, creates a connection pool, and runs migrations.
+    pub async fn connect(database_url: &str, max_connections: u32) -> Result<Self> {
+        let pool = PgPoolOptions::new()
+            .max_connections(max_connections)
+            .connect(database_url)
+            .await?;
+        let store = Self::new(pool);
+        store.run_migrations().await?;
+        Ok(store)
     }
 
     /// Gets a reference to the underlying connection pool.

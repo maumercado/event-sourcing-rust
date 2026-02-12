@@ -11,7 +11,7 @@ use std::sync::Arc;
 
 use axum::Router;
 use axum::routing::{get, post};
-use event_store::InMemoryEventStore;
+use event_store::EventStore;
 use metrics_exporter_prometheus::PrometheusHandle;
 use projections::{CurrentOrdersView, ProjectionProcessor};
 use tower_http::trace::TraceLayer;
@@ -19,10 +19,10 @@ use tower_http::trace::TraceLayer;
 use routes::orders::AppState;
 
 /// Creates the Axum application router with all routes and shared state.
-pub fn create_app(
-    state: Arc<AppState>,
+pub fn create_app<S: EventStore + Clone + 'static>(
+    state: Arc<AppState<S>>,
     metrics_handle: PrometheusHandle,
-    projection_processor: Arc<ProjectionProcessor<InMemoryEventStore>>,
+    projection_processor: Arc<ProjectionProcessor<S>>,
 ) -> Router {
     let _ = projection_processor;
 
@@ -32,23 +32,23 @@ pub fn create_app(
 
     Router::new()
         .route("/health", get(routes::health::check))
-        .route("/orders", post(routes::orders::create))
-        .route("/orders", get(routes::orders::list))
-        .route("/orders/{id}", get(routes::orders::get))
-        .route("/orders/{id}/submit", post(routes::orders::submit))
-        .route("/orders/{id}/fulfill", post(routes::orders::fulfill))
-        .route("/orders/{id}/saga", get(routes::orders::saga_status))
+        .route("/orders", post(routes::orders::create::<S>))
+        .route("/orders", get(routes::orders::list::<S>))
+        .route("/orders/{id}", get(routes::orders::get::<S>))
+        .route("/orders/{id}/submit", post(routes::orders::submit::<S>))
+        .route("/orders/{id}/fulfill", post(routes::orders::fulfill::<S>))
+        .route("/orders/{id}/saga", get(routes::orders::saga_status::<S>))
         .with_state(state)
         .merge(metrics_router)
         .layer(TraceLayer::new_for_http())
 }
 
-/// Creates the default application state with in-memory stores and mock services.
-pub fn create_default_state(
-    event_store: InMemoryEventStore,
+/// Creates the default application state with stores and mock services.
+pub fn create_default_state<S: EventStore + Clone + 'static>(
+    event_store: S,
 ) -> (
-    Arc<AppState>,
-    Arc<ProjectionProcessor<InMemoryEventStore>>,
+    Arc<AppState<S>>,
+    Arc<ProjectionProcessor<S>>,
     Arc<CurrentOrdersView>,
 ) {
     use domain::OrderService;

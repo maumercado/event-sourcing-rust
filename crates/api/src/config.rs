@@ -6,11 +6,15 @@
 /// - `HOST` — bind address (default: `"0.0.0.0"`)
 /// - `PORT` — listen port (default: `3000`)
 /// - `RUST_LOG` — tracing filter directive (default: `"info"`)
+/// - `DATABASE_URL` — PostgreSQL connection string (default: `None`, uses in-memory store)
+/// - `DB_MAX_CONNECTIONS` — max database pool connections (default: `10`)
 #[derive(Debug, Clone)]
 pub struct Config {
     pub host: String,
     pub port: u16,
     pub log_level: String,
+    pub database_url: Option<String>,
+    pub db_max_connections: u32,
 }
 
 impl Config {
@@ -23,6 +27,11 @@ impl Config {
                 .and_then(|p| p.parse().ok())
                 .unwrap_or(3000),
             log_level: std::env::var("RUST_LOG").unwrap_or_else(|_| "info".to_string()),
+            database_url: std::env::var("DATABASE_URL").ok(),
+            db_max_connections: std::env::var("DB_MAX_CONNECTIONS")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(10),
         }
     }
 
@@ -38,6 +47,8 @@ impl Default for Config {
             host: "0.0.0.0".to_string(),
             port: 3000,
             log_level: "info".to_string(),
+            database_url: None,
+            db_max_connections: 10,
         }
     }
 }
@@ -60,6 +71,8 @@ mod tests {
             host: "127.0.0.1".to_string(),
             port: 8080,
             log_level: "debug".to_string(),
+            database_url: None,
+            db_max_connections: 10,
         };
         assert_eq!(config.addr(), "127.0.0.1:8080");
     }
@@ -68,5 +81,12 @@ mod tests {
     fn test_addr_default() {
         let config = Config::default();
         assert_eq!(config.addr(), "0.0.0.0:3000");
+    }
+
+    #[test]
+    fn test_default_database_fields() {
+        let config = Config::default();
+        assert!(config.database_url.is_none());
+        assert_eq!(config.db_max_connections, 10);
     }
 }

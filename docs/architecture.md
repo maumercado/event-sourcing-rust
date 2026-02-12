@@ -356,8 +356,46 @@ pub enum DomainError {
 ### Phase 6: Production Ready (In Progress)
 - [x] Configuration management
 - [x] Graceful shutdown
+- [x] Postgres integration (runtime-swappable event store)
 - [ ] Performance optimization
 - [ ] Documentation completion
+
+## Runtime Event Store Selection
+
+The API server selects its event store implementation at startup based on environment configuration:
+
+- **`DATABASE_URL` set** — connects to PostgreSQL via `PostgresEventStore::connect()`, which creates a connection pool and runs migrations automatically.
+- **`DATABASE_URL` not set** — falls back to `InMemoryEventStore` (useful for development and testing).
+
+The entire API layer (`AppState`, route handlers, `create_app`, `create_default_state`) is generic over `S: EventStore + Clone`. This means both stores satisfy the same interface with zero runtime overhead from dynamic dispatch — the concrete type is monomorphized at compile time, and type erasure happens at the `Router` level.
+
+```
+DATABASE_URL=postgres://... → PostgresEventStore (persistent, production)
+(not set)                   → InMemoryEventStore  (ephemeral, development)
+```
+
+Related configuration:
+- `DB_MAX_CONNECTIONS` — max pool connections (default: 10)
+
+## Snapshot Readiness Assessment
+
+The snapshot infrastructure is **fully implemented** but not yet wired to the Order aggregate:
+
+### Already in place
+- `Snapshot` struct in `event-store/src/snapshot.rs`
+- `SnapshotCapable` trait in `domain/src/aggregate.rs`
+- `CommandHandler::execute_with_snapshot()` — loads from snapshot + remaining events
+- `EventStore::save_snapshot()` / `get_snapshot()` — persist and retrieve snapshots
+- `EventStoreExt::load_aggregate()` — returns snapshot + events-after-snapshot
+- Full PostgreSQL implementation with `snapshots` table
+
+### Remaining work (small)
+1. `impl SnapshotCapable for Order {}` — one line; `Order` already derives `Serialize + Deserialize`
+2. Switch `OrderService` methods from `execute()` to `execute_with_snapshot()`
+3. Add integration tests verifying snapshot creation and restore
+
+### Priority assessment
+**Not urgent.** Orders typically have a small number of events (create, add items, submit, fulfill/cancel). Snapshots become valuable at hundreds or thousands of events per aggregate, which is unlikely for this domain. The infrastructure is ready for when it's needed.
 
 ## Key Design Decisions
 
@@ -375,6 +413,7 @@ pub enum DomainError {
 | Metrics | metrics + Prometheus exporter | Lightweight, Prometheus-native |
 | Configuration | Env vars + Config struct | 12-factor app, discoverable defaults |
 | Graceful Shutdown | tokio::signal + with_graceful_shutdown | Drains in-flight requests on SIGINT/SIGTERM |
+| Event Store Selection | Generic AppState + env-based branching | Postgres for production, in-memory for dev/test, zero dynamic dispatch |
 
 ## Further Reading
 

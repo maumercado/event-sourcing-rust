@@ -1,7 +1,7 @@
 //! API server entry point.
 
 use api::config::Config;
-use event_store::InMemoryEventStore;
+use event_store::{InMemoryEventStore, PostgresEventStore};
 use tokio::signal;
 use tracing_subscriber::EnvFilter;
 use tracing_subscriber::layer::SubscriberExt;
@@ -57,15 +57,22 @@ async fn main() {
         .install_recorder()
         .expect("failed to install Prometheus recorder");
 
-    // 4. Create event store and application state
-    let event_store = InMemoryEventStore::new();
-    let (state, processor, _current_orders) = api::create_default_state(event_store);
-
-    // 5. Run catch-up on projections (replay any existing events)
-    processor.run_catch_up().await.expect("catch-up failed");
-
-    // 6. Build the application
-    let app = api::create_app(state, metrics_handle, processor);
+    // 4. Create event store and application state (Postgres if DATABASE_URL set, else in-memory)
+    let app = if let Some(ref database_url) = config.database_url {
+        tracing::info!("connecting to PostgreSQL");
+        let store = PostgresEventStore::connect(database_url, config.db_max_connections)
+            .await
+            .expect("failed to connect to PostgreSQL");
+        let (state, processor, _) = api::create_default_state(store);
+        processor.run_catch_up().await.expect("catch-up failed");
+        api::create_app(state, metrics_handle, processor)
+    } else {
+        tracing::info!("using in-memory event store");
+        let store = InMemoryEventStore::new();
+        let (state, processor, _) = api::create_default_state(store);
+        processor.run_catch_up().await.expect("catch-up failed");
+        api::create_app(state, metrics_handle, processor)
+    };
 
     // 7. Start server
     let addr = config.addr();
