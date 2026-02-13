@@ -7,7 +7,7 @@ use axum::extract::{Path, State};
 use common::AggregateId;
 use domain::{AddItem, CreateOrder, CustomerId, Money, OrderItem, OrderService, SubmitOrder};
 use event_store::EventStore;
-use projections::CurrentOrdersView;
+use projections::{CurrentOrdersView, ProjectionProcessor};
 use saga::{
     InMemoryInventoryService, InMemoryPaymentService, InMemoryShippingService, SagaCoordinator,
 };
@@ -25,6 +25,8 @@ pub struct AppState<S: EventStore> {
         InMemoryShippingService,
     >,
     pub current_orders: Arc<CurrentOrdersView>,
+    pub event_store: S,
+    pub projection_processor: Arc<ProjectionProcessor<S>>,
 }
 
 // -- Request types --
@@ -167,6 +169,13 @@ pub async fn get<S: EventStore + Clone + 'static>(
 pub async fn list<S: EventStore + Clone + 'static>(
     State(state): State<Arc<AppState<S>>>,
 ) -> Result<Json<Vec<OrderResponse>>, ApiError> {
+    // Run catch-up to ensure the read model includes latest events
+    state
+        .projection_processor
+        .run_catch_up()
+        .await
+        .map_err(|e| ApiError::Internal(e.to_string()))?;
+
     let orders = state.current_orders.get_all_orders().await;
 
     let responses: Vec<OrderResponse> = orders
@@ -283,6 +292,46 @@ pub async fn saga_status<S: EventStore + Clone + 'static>(
         tracking_number: saga.tracking_number().map(String::from),
         failure_reason: saga.failure_reason().map(String::from),
     }))
+}
+
+/// Response type for event envelope data.
+#[derive(Serialize)]
+pub struct EventEnvelopeResponse {
+    pub event_id: String,
+    pub event_type: String,
+    pub aggregate_id: String,
+    pub version: i64,
+    pub timestamp: String,
+    pub payload: serde_json::Value,
+}
+
+/// GET /orders/:id/events — list all events for an order aggregate.
+#[tracing::instrument(skip(state))]
+pub async fn events<S: EventStore + Clone + 'static>(
+    State(state): State<Arc<AppState<S>>>,
+    Path(id): Path<String>,
+) -> Result<Json<Vec<EventEnvelopeResponse>>, ApiError> {
+    let aggregate_id = parse_aggregate_id(&id)?;
+
+    let envelopes = state
+        .event_store
+        .get_events_for_aggregate(aggregate_id)
+        .await
+        .map_err(|e| ApiError::Internal(e.to_string()))?;
+
+    let responses: Vec<EventEnvelopeResponse> = envelopes
+        .into_iter()
+        .map(|e| EventEnvelopeResponse {
+            event_id: e.event_id.to_string(),
+            event_type: e.event_type,
+            aggregate_id: e.aggregate_id.to_string(),
+            version: e.version.as_i64(),
+            timestamp: e.timestamp.to_rfc3339(),
+            payload: e.payload,
+        })
+        .collect();
+
+    Ok(Json(responses))
 }
 
 fn parse_aggregate_id(id: &str) -> Result<AggregateId, ApiError> {

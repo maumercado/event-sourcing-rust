@@ -14,6 +14,7 @@ use axum::routing::{get, post};
 use event_store::EventStore;
 use metrics_exporter_prometheus::PrometheusHandle;
 use projections::{CurrentOrdersView, ProjectionProcessor};
+use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::TraceLayer;
 
 use routes::orders::AppState;
@@ -24,7 +25,7 @@ pub fn create_app<S: EventStore + Clone + 'static>(
     metrics_handle: PrometheusHandle,
     projection_processor: Arc<ProjectionProcessor<S>>,
 ) -> Router {
-    let _ = projection_processor;
+    let _ = &projection_processor;
 
     let metrics_router = Router::new()
         .route("/metrics", get(routes::metrics::get))
@@ -38,8 +39,15 @@ pub fn create_app<S: EventStore + Clone + 'static>(
         .route("/orders/{id}/submit", post(routes::orders::submit::<S>))
         .route("/orders/{id}/fulfill", post(routes::orders::fulfill::<S>))
         .route("/orders/{id}/saga", get(routes::orders::saga_status::<S>))
+        .route("/orders/{id}/events", get(routes::orders::events::<S>))
         .with_state(state)
         .merge(metrics_router)
+        .layer(
+            CorsLayer::new()
+                .allow_origin(Any)
+                .allow_methods(Any)
+                .allow_headers(Any),
+        )
         .layer(TraceLayer::new_for_http())
 }
 
@@ -65,7 +73,7 @@ pub fn create_default_state<S: EventStore + Clone + 'static>(
 
     let current_orders = Arc::new(CurrentOrdersView::new());
 
-    let mut processor = ProjectionProcessor::new(event_store);
+    let mut processor = ProjectionProcessor::new(event_store.clone());
     processor.register(Box::new(current_orders.as_ref().clone()) as Box<dyn Projection>);
     let processor = Arc::new(processor);
 
@@ -73,6 +81,8 @@ pub fn create_default_state<S: EventStore + Clone + 'static>(
         order_service,
         saga_coordinator,
         current_orders: current_orders.clone(),
+        event_store,
+        projection_processor: processor.clone(),
     });
 
     (state, processor, current_orders)

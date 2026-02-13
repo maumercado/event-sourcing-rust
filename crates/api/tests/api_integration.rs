@@ -413,6 +413,69 @@ async fn test_create_order_with_customer_id() {
 }
 
 #[tokio::test]
+async fn test_get_order_events() {
+    let (app, _, _) = setup_with_state();
+
+    // Create order with items
+    let create_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/orders")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    serde_json::to_string(&serde_json::json!({
+                        "items": [{
+                            "product_id": "SKU-001",
+                            "product_name": "Widget",
+                            "quantity": 2,
+                            "unit_price_cents": 1000
+                        }]
+                    }))
+                    .unwrap(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    let body = axum::body::to_bytes(create_response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let created: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    let order_id = created["order_id"].as_str().unwrap();
+
+    // Get events
+    let events_response = app
+        .oneshot(
+            Request::builder()
+                .uri(format!("/orders/{order_id}/events"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(events_response.status(), StatusCode::OK);
+
+    let body = axum::body::to_bytes(events_response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let events: Vec<serde_json::Value> = serde_json::from_slice(&body).unwrap();
+
+    // Should have OrderCreated + ItemAdded events
+    assert_eq!(events.len(), 2);
+    assert_eq!(events[0]["event_type"], "OrderCreated");
+    assert_eq!(events[0]["version"], 1);
+    assert_eq!(events[1]["event_type"], "ItemAdded");
+    assert_eq!(events[1]["version"], 2);
+    assert!(events[0]["event_id"].as_str().is_some());
+    assert!(events[0]["timestamp"].as_str().is_some());
+    assert!(events[0]["payload"].is_object());
+}
+
+#[tokio::test]
 async fn test_create_order_with_invalid_customer_id() {
     let app = setup();
 
